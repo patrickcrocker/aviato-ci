@@ -1,0 +1,154 @@
+---
+# groups:
+# - name: develop
+#   jobs:
+#   - prepare-itest-env
+#   - build-accounts
+#   - itest-accounts
+#   - build-portfolio
+#   - itest-portfolio
+#   - build-quotes
+#   - itest-quotes
+#   - build-web
+#   - itest-web
+#   - itest-all
+# - name: publish
+#   jobs:
+#   - accounts-major
+#   - accounts-minor
+#   - portfolio-major
+#   - portfolio-minor
+#   - quotes-major
+#   - quotes-minor
+#   - web-major
+#   - web-minor
+# - name: destroy
+#   jobs:
+#   - push-me
+
+cf-params: &cf-params
+  CF_API_URL: {{cf-api-url}}
+  CF_SKIP_SSL: {{cf-skip-ssl}}
+  CF_USERNAME: {{cf-username}}
+  CF_PASSWORD: {{cf-password}}
+  CF_ORG: {{cf-org}}
+  CF_SPACE: {{cf-space}}
+
+jobs:
+- name: build-ui
+  public: true
+  serial_groups: [ ui-version ]
+  plan:
+  - aggregate:
+    - get: pipeline
+    - get: concourse-commons
+    - get: project
+      resource: aviato-ui
+      trigger: true
+    - get: version
+      resource: ui-version
+      params: { pre: rc }
+  - task: build
+    file: concourse-commons/tasks/build-maven.yml
+    params:
+      ARTIFACT_ID: aviato-ui
+  - put: ui-milestone
+    params: { file: build-output/aviato-ui-*.jar }
+  - put: ui-version
+    params: { file: version/number }
+
+- name: deploy-ui
+  public: true
+  serial: true
+  plan:
+  - aggregate:
+    - get: pipeline
+    - get: concourse-commons
+    - get: release
+      resource: ui-milestone
+      passed: [ build-ui ]
+      trigger: true
+  - task: generate-manifest
+    file: concourse-commons/tasks/generate-manifest.yml
+    params:
+      <<: *cf-params
+      CF_APP_NAME: {{cf-app-ui-name}}
+      CF_APP_HOST: {{cf-app-ui-host}}
+      CF_ARTIFACT_ID: aviato-ui
+  - put: cf-itest
+    params:
+      manifest: generate-manifest-output/manifest.yml
+      current_app_name: {{cf-app-ui-name}}
+
+- name: ui-major
+  public: true
+  serial_groups: [ ui-version ]
+  plan:
+  - get: ui-version
+    params: { bump: major, pre: rc }
+  - put: ui-version
+    params: { file: ui-version/number }
+
+- name: ui-minor
+  public: true
+  serial_groups: [ ui-version ]
+  plan:
+  - get: ui-version
+    params: { bump: minor, pre: rc }
+  - put: ui-version
+    params: { file: ui-version/number }
+
+resources:
+- name: pipeline
+  type: git
+  source:
+    uri: {{pipeline-git-uri}}
+    branch: {{pipeline-git-branch}}
+
+- name: aviato-ui
+  type: git
+  source:
+    uri: {{aviato-ui-git-uri}}
+    branch: {{aviato-ui-git-branch}}
+    private_key: {{git-private-key}}
+
+- name: ui-version
+  type: semver
+  source:
+    driver: git
+    uri: {{aviato-ui-version-git-uri}}
+    branch: {{aviato-ui-version-git-branch}}
+    file: number
+    initial_version: 1.0.0-rc.0
+    private_key: {{git-private-key}}
+
+- name: ui-milestone
+  type: maven-resource
+  source:
+    url: https://nexus.anvil.pcfdemo.com/repository/maven-milestones/
+    artifact: com.aviato:aviato-ui:jar
+    username: {{maven-repo-username}}
+    password: {{maven-repo-password}}
+    repository_cert: |
+      -----BEGIN CERTIFICATE-----
+      MIIEowIBAAKCAQEAtCS10/f7W7lkQaSgD/mVeaSOvSF9ql4hf/zfMwfVGgHWjj+W
+      <Lots more text>
+      DWiJL+OFeg9kawcUL6hQ8JeXPhlImG6RTUffma9+iGQyyBMCGd1l
+      -----END CERTIFICATE-----
+
+- name: cf-itest
+  type: cf
+  source:
+    api: {{cf-api-url}}
+    skip_cert_check: true
+    username: {{cf-username}}
+    password: {{cf-password}}
+    organization: {{cf-org}}
+    space: {{cf-space}}
+
+resource_types:
+- name: maven-resource
+  type: docker-image
+  source:
+    repository: patrickcrocker/maven-resource
+    tag: latest

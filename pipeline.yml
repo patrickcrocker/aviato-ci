@@ -1,30 +1,20 @@
 ---
-# groups:
-# - name: develop
-#   jobs:
-#   - prepare-itest-env
-#   - build-accounts
-#   - itest-accounts
-#   - build-portfolio
-#   - itest-portfolio
-#   - build-quotes
-#   - itest-quotes
-#   - build-web
-#   - itest-web
-#   - itest-all
-# - name: publish
-#   jobs:
-#   - accounts-major
-#   - accounts-minor
-#   - portfolio-major
-#   - portfolio-minor
-#   - quotes-major
-#   - quotes-minor
-#   - web-major
-#   - web-minor
-# - name: destroy
-#   jobs:
-#   - push-me
+groups:
+- name: develop
+  jobs:
+  - build-ui
+  - deploy-ui
+- name: publish
+  jobs:
+  - ui-major
+  - ui-minor
+
+maven-params: &maven-params
+  MAVEN_OPTS: {{maven-opts}}
+  MAVEN_CONFIG: {{maven-config}}
+  MAVEN_REPO_MIRROR: {{maven-repository-mirror-url}}
+  MAVEN_REPO_USERNAME: {{maven-repository-username}}
+  MAVEN_REPO_PASSWORD: {{maven-repository-password}}
 
 cf-params: &cf-params
   CF_API_URL: {{cf-api-url}}
@@ -105,6 +95,12 @@ resources:
     uri: {{pipeline-git-uri}}
     branch: {{pipeline-git-branch}}
 
+- name: concourse-commons
+  type: git
+  source:
+    uri: {{concourse-commons-git-uri}}
+    branch: {{concourse-commons-git-branch}}
+
 - name: aviato-ui
   type: git
   source:
@@ -125,16 +121,18 @@ resources:
 - name: ui-milestone
   type: maven-resource
   source:
-    url: https://nexus.anvil.pcfdemo.com/repository/maven-milestones/
+    url: {{maven-repository-milestone-url}}
     artifact: com.aviato:aviato-ui:jar
-    username: {{maven-repo-username}}
-    password: {{maven-repo-password}}
-    repository_cert: |
-      -----BEGIN CERTIFICATE-----
-      MIIEowIBAAKCAQEAtCS10/f7W7lkQaSgD/mVeaSOvSF9ql4hf/zfMwfVGgHWjj+W
-      <Lots more text>
-      DWiJL+OFeg9kawcUL6hQ8JeXPhlImG6RTUffma9+iGQyyBMCGd1l
-      -----END CERTIFICATE-----
+    username: {{maven-repository-username}}
+    password: {{maven-repository-password}}
+
+# - name: ui-release
+#   type: maven-resource
+#   source:
+#     url: {{maven-repository-release-url}}
+#     artifact: com.aviato:aviato-ui:jar
+#     username: {{maven-repository-username}}
+#     password: {{maven-repository-password}}
 
 - name: cf-itest
   type: cf

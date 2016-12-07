@@ -27,7 +27,6 @@ cf-params: &cf-params
 jobs:
 - name: build-ui
   public: true
-  serial_groups: [ ui-version ]
   plan:
   - aggregate:
     - get: pipeline
@@ -41,11 +40,15 @@ jobs:
   - task: build
     file: concourse-commons/tasks/build-maven.yml
     params:
+      <<: *maven-params
       ARTIFACT_ID: aviato-ui
   - put: ui-milestone
-    params: { file: build-output/aviato-ui-*.jar }
+    params:
+      file: build-output/aviato-ui-*.jar
+      version_file: version/number
   - put: ui-version
-    params: { file: version/number }
+    params:
+      file: version/number
 
 - name: deploy-ui
   public: true
